@@ -1,0 +1,5 @@
+# Daftar domain untuk diperiksa (contoh, domain netral untuk demo).
+# Ganti dengan domain MILIK SENDIRI. Satu per baris; '#' = komentar.
+example.com
+example.org
+https://www.iana.org

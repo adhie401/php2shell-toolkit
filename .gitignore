@@ -1,0 +1,14 @@
+# Hasil pemindaian (jangan commit data domain nyata / temuan)
+*.csv
+hasil*.csv
+sweep*.csv
+triage*.csv
+php2shell_results.csv
+
+# Daftar domain nyata (hanya contoh yang di-commit)
+domains.txt
+
+# Backup & sementara
+*.bak
+*.tmp
+__pycache__/
