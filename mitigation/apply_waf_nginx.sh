@@ -32,9 +32,14 @@ command -v nginx >/dev/null 2>&1 || { warn "nginx tidak ditemukan di server ini.
 uninstall() {
   log "Melepas WAF nginx..."
   run "rm -f '$MAP' '$SNIP'"
-  # hapus baris include yang pernah kita tambahkan
-  files="$(grep -rl 'php2shell-block.conf' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true)"
-  for f in $files; do run "sed -i '/php2shell-block.conf/d' '$f'"; log "Include dihapus: $f"; done
+  # hapus baris include yang pernah kita tambahkan (ikuti symlink + resolve ke file asli)
+  files="$(grep -Rl 'php2shell-block.conf' /etc/nginx/sites-enabled /etc/nginx/sites-available /etc/nginx/conf.d 2>/dev/null || true)"
+  seen=""
+  for f in $files; do
+    rf="$(readlink -f "$f")"
+    case " $seen " in *" $rf "*) continue;; esac; seen="$seen $rf"
+    run "sed -i '/php2shell-block.conf/d' '$rf'"; log "Include dihapus: $rf"
+  done
   if [ "$DRY_RUN" = "1" ]; then exit 0; fi
   if nginx -t; then systemctl reload nginx || true; log "WAF dilepas & nginx di-reload."
   else warn "nginx -t gagal setelah uninstall; periksa manual."; fi
@@ -78,8 +83,12 @@ EOF
 fi
 
 # --- 4. Sisipkan include ke server{} pertama tiap file --------------------
-targets="$(grep -rlE 'server[[:space:]]*\{' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | grep -v "$MAP" || true)"
-if [ -z "$targets" ]; then
+# -R mengikuti symlink (Ubuntu/Debian: sites-enabled/* = symlink ke sites-available),
+# lalu resolve ke file ASLI agar sed tidak merusak symlink.
+raw="$(grep -RlE 'server[[:space:]]*\{' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | grep -v "$MAP" || true)"
+targets=""
+for f in $raw; do rf="$(readlink -f "$f")"; case " $targets " in *" $rf "*) ;; *) targets="$targets $rf";; esac; done
+if [ -z "${targets// }" ]; then
   warn "Tidak menemukan blok server{} di sites-enabled/conf.d."
   warn "Tambahkan manual di dalam server{} Anda: include snippets/php2shell-block.conf;"
 fi
