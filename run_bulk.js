@@ -25,9 +25,9 @@ function parseCli(argv) {
     out: 'php2shell_results.csv',
     concurrency: 10,
     timeout: 10,
-    // default: phpcheck.js yang berada SATU FOLDER dengan script ini.
-    // Memakai __dirname -> folder bisa dipindah ke mana pun, tetap jalan.
-    tool: path.join(__dirname, 'phpcheck.js'),
+    // default: phpcheck.js OpenAI yang di-vendor di repo ini.
+    // __dirname -> relatif ke lokasi script, jadi folder bisa dipindah.
+    tool: path.join(__dirname, 'vendor', 'php2shell-checker', 'phpcheck.js'),
   }
   const a = argv.slice(2)
   for (let i = 0; i < a.length; i++) {

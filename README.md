@@ -27,19 +27,23 @@ python triage_scan.py domains.example.txt --shell-check --out hasil.csv
 
 Untuk mitigasi/patch server, baca **`mitigation/TUTORIAL.md`**.
 
-## Dependensi `run_bulk.js` (opsional)
+## `run_bulk.js` & tool OpenAI (vendored)
 
-`run_bulk.js` membungkus tool resmi OpenAI `phpcheck.js`
-(<https://github.com/openai/php2shell-checker>, Apache-2.0) yang **tidak disertakan**
-di repo ini. Untuk memakainya:
+`run_bulk.js` membungkus tool resmi OpenAI `phpcheck.js`. Tool itu **sudah disertakan**
+di `vendor/php2shell-checker/` (lihat atribusi di bawah), jadi `run_bulk.js` langsung jalan:
 
 ```bash
-git clone https://github.com/openai/php2shell-checker
-# lalu salin run_bulk.js ke dalam folder itu, ATAU tunjuk path-nya:
-node run_bulk.js domains.txt --tool /path/ke/php2shell-checker/phpcheck.js
+node run_bulk.js domains.txt --out hasil.csv
+# (opsional) pakai salinan phpcheck.js lain:
+node run_bulk.js domains.txt --tool /path/lain/phpcheck.js
 ```
 
-> `triage_scan.py` **berdiri sendiri** dan tidak butuh dependensi ini.
+> `triage_scan.py` **berdiri sendiri** dan tidak butuh tool ini.
+
+### Atribusi pihak ketiga
+`vendor/php2shell-checker/` berisi [openai/php2shell-checker](https://github.com/openai/php2shell-checker)
+(© OpenAI, lisensi **Apache-2.0**, lihat `vendor/php2shell-checker/LICENSE`) — disertakan
+tanpa modifikasi untuk kemudahan pemakaian.
 
 ## Keamanan & etika
 
