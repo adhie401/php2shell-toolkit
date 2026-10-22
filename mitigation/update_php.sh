@@ -37,10 +37,15 @@ log "Package manager: $PM"
 
 # --- Snapshot paket PHP terpasang ------------------------------------------
 case "$PM" in
-  apt)    PKGS="$(dpkg -l 'php*' 2>/dev/null | awk '/^ii/{print $2}')" ;;
-  dnf|yum)PKGS="$(rpm -qa 'php*' 2>/dev/null)" ;;
-  zypper) PKGS="$(rpm -qa 'php*' 2>/dev/null)" ;;
+  apt)    PKGS="$(dpkg -l 'php*' 2>/dev/null | awk '/^ii/{print $2}' || true)" ;;
+  dnf|yum)PKGS="$(rpm -qa 'php*' 2>/dev/null || true)" ;;
+  zypper) PKGS="$(rpm -qa 'php*' 2>/dev/null || true)" ;;
 esac
+if [ -z "${PKGS// }" ]; then
+  warn "Tidak ada paket PHP dari package manager (mungkin PHP dari source/container)."
+  warn "update_php.sh ditujukan untuk VM dengan PHP dari paket distro. Hentikan."
+  exit 0
+fi
 if [ "$DRY_RUN" != "1" ]; then printf 'paket PHP sebelum update:\n%s\n' "$PKGS" >> "$AUDIT"; fi
 log "Paket PHP terpasang dicatat ke $AUDIT"
 

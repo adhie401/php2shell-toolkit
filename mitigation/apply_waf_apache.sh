@@ -58,9 +58,16 @@ run "cp -a '$(dirname "$CONF")' '$BK/' 2>/dev/null || true"
 [ -f "$CONF" ] && run "cp -a '$CONF' '$BK/'"
 log "Backup -> $BK"
 
-# --- 2. Susun RewriteCond untuk path yang diizinkan ------------------------
-ALLOW_COND=""
-for p in $ALLOW_PATHS; do ALLOW_COND="${ALLOW_COND}    RewriteCond %{REQUEST_URI} !^${p} [NC]"$'\n'; done
+# --- 2. Susun ekspresi <If> (Apache 2.4): deteksi header request + allowlist
+# Catatan: pakai %{HTTP:Content-Type} (header REQUEST). mod_rewrite %{CONTENT_TYPE}
+# salah karakter (itu tipe RESPONS) & tidak andal di konteks server.
+EXPR='%{HTTP:Content-Type} =~ m#multipart/form-data#i'
+if [ -n "$ALLOW_PATHS" ]; then
+  alt=""
+  for p in $ALLOW_PATHS; do alt="${alt}|${p}"; done
+  alt="${alt#|}"
+  EXPR="${EXPR} && ! (%{REQUEST_URI} =~ m#^(${alt})#)"
+fi
 
 # --- 3. Tulis config -------------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then
@@ -68,19 +75,16 @@ if [ "$DRY_RUN" = "1" ]; then
 else
   {
     echo "# PHP2Shell mitigation (CVE-2026-109618/109619) - ${TS}"
-    echo "<IfModule mod_rewrite.c>"
-    echo "    RewriteEngine On"
-    echo "    RewriteCond %{CONTENT_TYPE} multipart/form-data [NC]"
-    printf '%s' "$ALLOW_COND"
-    echo "    RewriteRule .* - [F,L]"
-    echo "</IfModule>"
+    echo "# Blokir multipart/form-data (pemicu PHP2Shell) kecuali ALLOW_PATHS."
+    echo "<If \"${EXPR}\">"
+    echo "    Require all denied"
+    echo "</If>"
   } > "$CONF"
   log "Config ditulis: $CONF"
 fi
 
-# --- 4. Aktifkan modul & config (Debian) -----------------------------------
+# --- 4. Aktifkan config (Debian) -------------------------------------------
 if [ "$FLAVOR" = debian ]; then
-  run "a2enmod rewrite >/dev/null 2>&1 || true"
   run "a2enconf php2shell-block >/dev/null 2>&1 || true"
 fi
 
