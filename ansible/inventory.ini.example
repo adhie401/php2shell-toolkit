@@ -1,0 +1,23 @@
+# Salin ke inventory.ini lalu isi server Anda. Jalankan: cp inventory.ini.example inventory.ini
+#
+# Kelompokkan per environment agar bisa patch bertahap (staging dulu, baru prod).
+
+[php_staging]
+stg-web01 ansible_host=10.10.0.11
+
+[php_prod]
+web01 ansible_host=10.0.0.11
+web02 ansible_host=10.0.0.12
+web03 ansible_host=10.0.0.13
+# ... tambah sebanyak server Anda
+
+# Grup payung untuk playbook (semua host php)
+[php_servers:children]
+php_staging
+php_prod
+
+# Variabel koneksi (sesuaikan)
+[php_servers:vars]
+ansible_user=ubuntu
+ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_python_interpreter=/usr/bin/python3

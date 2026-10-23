@@ -1,0 +1,59 @@
+---
+# FASE 3 — Mitigasi sementara (php.ini hardening + batas memori systemd).
+# Setara apply_mitigation.sh, dijalankan serempak ke fleet.
+# WAF (blok multipart) sengaja TIDAK diotomasi di sini karena sangat spesifik
+# per-aplikasi (risiko mematahkan upload) — terapkan terpisah via apply_waf_*.sh.
+- name: Mitigasi php.ini + systemd MemoryMax
+  hosts: php_servers
+  become: true
+  gather_facts: true
+  serial: "{{ patch_batch }}"
+  tasks:
+    - name: Temukan semua direktori conf.d PHP (fpm & cli)
+      ansible.builtin.find:
+        paths:
+          - /etc/php
+          - /usr/local/etc/php
+        patterns: "conf.d"
+        file_type: directory
+        recurse: true
+      register: confd
+
+    - name: Pasang drop-in mitigasi php.ini (override nilai lama)
+      ansible.builtin.copy:
+        dest: "{{ item.path }}/99-php2shell-mitigation.ini"
+        mode: "0644"
+        content: |
+          ; PHP2Shell mitigation (CVE-2026-109618/109619) - dikelola Ansible
+          memory_limit = -1
+          post_max_size = 8M
+          session.upload_progress.enabled = 0
+          fatal_error_backtraces = 0
+      loop: "{{ confd.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Temukan service php-fpm
+      ansible.builtin.shell: "systemctl list-unit-files --type=service | awk '/php.*fpm/{print $1}'"
+      register: fpm_svcs
+      changed_when: false
+
+    - name: Pasang batas memori systemd (MemoryMax) untuk tiap php-fpm
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}.d/10-php2shell-memorymax.conf"
+        mode: "0644"
+        content: |
+          [Service]
+          MemoryMax={{ fpm_memory_max }}
+          MemoryHigh={{ fpm_memory_max }}
+      loop: "{{ fpm_svcs.stdout_lines }}"
+      when: fpm_svcs.stdout_lines | length > 0
+      notify: reload systemd & restart fpm
+
+  handlers:
+    - name: reload systemd & restart fpm
+      ansible.builtin.shell: |
+        systemctl daemon-reload
+        for s in {{ fpm_svcs.stdout_lines | join(' ') }}; do systemctl restart "$s"; done
+      args:
+        executable: /bin/bash

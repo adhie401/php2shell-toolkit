@@ -1,0 +1,41 @@
+---
+# FASE 6 — Verifikasi (read-only). Kumpulkan versi PHP yang MELAYANI web + CLI,
+# bandingkan dengan ambang patched, dan ringkas status seluruh fleet.
+- name: Verifikasi status patch PHP2Shell
+  hosts: php_servers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Versi PHP (CLI)
+      ansible.builtin.command: "php -r 'echo PHP_VERSION;'"
+      register: ver_cli
+      changed_when: false
+      failed_when: false
+
+    - name: Versi PHP (via web, dari header X-Powered-By)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/"
+        method: HEAD
+        return_content: false
+        status_code: [200, 301, 302, 403, 404, 405]
+      register: web_head
+      failed_when: false
+
+    - name: Tentukan branch (CLI)
+      ansible.builtin.set_fact:
+        php_branch: "{{ ver_cli.stdout.split('.')[0] ~ '.' ~ ver_cli.stdout.split('.')[1] }}"
+      when: ver_cli.stdout | length > 0
+
+    - name: Status per host
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} | CLI={{ ver_cli.stdout | default('?') }}
+          target={{ patched[php_branch] | default('?') }}
+          status={{ 'OK' if (ver_cli.stdout is version(patched[php_branch], '>=')) else 'PERLU CEK' }}
+          web_xpb={{ web_head.x_powered_by | default('(tersembunyi)') }}
+      when: ver_cli.stdout | length > 0
+
+    - name: Host tanpa PHP CLI (cek manual)
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: PHP CLI tidak terdeteksi - verifikasi manual via phpinfo()."
+      when: ver_cli.stdout | length == 0

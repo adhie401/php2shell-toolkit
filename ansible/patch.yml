@@ -1,0 +1,102 @@
+---
+# FASE 5 — PATCH PHP ke versi aman, bergelombang (rolling), dengan verifikasi.
+# Tetap di branch yang sama (8.2 -> 8.2.x terbaru), tidak lompat minor.
+- name: Patch PHP2Shell (CVE-2026-109618/109619) seluruh fleet
+  hosts: php_servers
+  become: true
+  gather_facts: true
+  serial: "{{ patch_batch }}"      # patch per gelombang; sisanya tetap melayani
+  max_fail_percentage: 20          # stop bila > 20% batch gagal
+  vars:
+    ts: "{{ ansible_date_time.iso8601_basic_short }}"
+  tasks:
+    # --- Backup ringkas sebelum ubah ---
+    - name: Direktori backup
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Backup /etc/php
+      ansible.builtin.archive:
+        path: /etc/php
+        dest: "{{ backup_dir }}/etc-php-{{ ts }}.tar.gz"
+        format: gz
+        mode: "0600"
+      ignore_errors: true
+
+    - name: Versi PHP SEBELUM
+      ansible.builtin.command: "php -r 'echo PHP_VERSION;'"
+      register: php_before
+      changed_when: false
+      failed_when: false
+
+    # --- Debian / Ubuntu ---
+    - name: (Debian) Perbarui cache apt
+      ansible.builtin.apt:
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+
+    - name: (Debian) Daftar paket php terpasang
+      ansible.builtin.shell: "dpkg -l 'php*' | awk '/^ii/{print $2}'"
+      register: deb_pkgs
+      changed_when: false
+      when: ansible_os_family == 'Debian'
+
+    - name: (Debian) Upgrade HANYA paket php terpasang (tetap di branch)
+      ansible.builtin.apt:
+        name: "{{ deb_pkgs.stdout_lines }}"
+        state: latest
+        only_upgrade: true
+      when:
+        - ansible_os_family == 'Debian'
+        - deb_pkgs.stdout_lines | length > 0
+      notify: restart php stack
+
+    # --- RHEL / Rocky / Alma ---
+    - name: (RedHat) Update paket php (tetap di module stream)
+      ansible.builtin.dnf:
+        name: "php*"
+        state: latest
+      when: ansible_os_family == 'RedHat'
+      notify: restart php stack
+
+    - name: Jalankan restart sekarang (sebelum verifikasi)
+      ansible.builtin.meta: flush_handlers
+
+    # --- Verifikasi ---
+    - name: Versi PHP SESUDAH
+      ansible.builtin.command: "php -r 'echo PHP_VERSION;'"
+      register: php_after
+      changed_when: false
+
+    - name: Tentukan branch
+      ansible.builtin.set_fact:
+        php_branch: "{{ php_after.stdout.split('.')[0] ~ '.' ~ php_after.stdout.split('.')[1] }}"
+
+    - name: Laporan sebelum -> sesudah
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ php_before.stdout | default('none') }} -> {{ php_after.stdout }} (target {{ patched[php_branch] | default('?') }})"
+
+    - name: Assert sudah ter-patch (ambang upstream)
+      ansible.builtin.assert:
+        that:
+          - php_after.stdout is version(patched[php_branch], '>=')
+        success_msg: "OK: {{ php_after.stdout }} >= {{ patched[php_branch] }}"
+        fail_msg: >-
+          {{ php_after.stdout }} < {{ patched[php_branch] }}.
+          Jika distro mem-backport fix, nomor upstream bisa lebih rendah -
+          verifikasi 'apt-get changelog' lalu set skip_version_assert=true.
+      when:
+        - not skip_version_assert
+        - php_branch in patched
+
+  handlers:
+    - name: restart php stack
+      ansible.builtin.shell: |
+        for s in $(systemctl list-unit-files --type=service | awk '/php.*fpm/{print $1}'); do
+          systemctl restart "$s"
+        done
+        systemctl reload nginx 2>/dev/null || systemctl reload apache2 2>/dev/null || systemctl reload httpd 2>/dev/null || true
+      args:
+        executable: /bin/bash

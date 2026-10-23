@@ -1,0 +1,39 @@
+---
+# FASE 2 — Backup konfigurasi PHP/web di semua host (sebelum perubahan apa pun).
+# NB: snapshot VM lewat hypervisor/cloud tetap lapisan utama; ini backup config.
+- name: Backup konfigurasi PHP & web server
+  hosts: php_servers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Buat direktori backup
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Cek direktori config yang ada
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/php
+        - /etc/nginx
+        - /etc/apache2
+      register: cfg_dirs
+
+    - name: Arsipkan config yang ada ke tar.gz
+      ansible.builtin.archive:
+        path: "{{ cfg_dirs.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+        dest: "{{ backup_dir }}/config-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+        format: gz
+        mode: "0600"
+      when: (cfg_dirs.results | selectattr('stat.exists') | list | length) > 0
+
+    - name: Tampilkan hasil backup
+      ansible.builtin.command: "ls -lh {{ backup_dir }}"
+      register: bkp_ls
+      changed_when: false
+
+    - name: Ringkasan
+      ansible.builtin.debug:
+        var: bkp_ls.stdout_lines

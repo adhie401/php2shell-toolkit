@@ -1,0 +1,22 @@
+---
+# Versi upstream ber-patch per branch PHP (CVE-2026-109618/109619).
+patched:
+  "8.5": "8.5.12"
+  "8.4": "8.4.27"
+  "8.3": "8.3.36"
+  "8.2": "8.2.35"
+
+# Berapa banyak server dipatch SEKALIGUS per gelombang (rolling).
+# Pakai persen atau angka. 25% = seperempat fleet per batch.
+patch_batch: "25%"
+
+# Mitigasi sementara (playbook mitigate.yml):
+fpm_memory_max: "2G"          # batas RAM php-fpm via systemd (sesuaikan RAM server)
+allow_paths: "/admin/upload"  # path upload sah yang DIKECUALIKAN dari blok WAF
+
+# Lewati assert versi (berguna bila distro mem-backport tanpa menaikkan nomor upstream).
+# Set true HANYA setelah Anda verifikasi fix via `apt-get changelog`.
+skip_version_assert: false
+
+# Lokasi backup di tiap host
+backup_dir: /var/backups/php2shell
